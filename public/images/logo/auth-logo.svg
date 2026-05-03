@@ -1,0 +1,26 @@
+<svg width="231" height="48" viewBox="0 0 231 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="invexaBgAuthLight" x1="5" y1="4" x2="43" y2="44" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0EA5E9"/>
+      <stop offset="0.5" stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="invexaGlowAuthLight" x1="9" y1="9" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22D3EE" stop-opacity="0.38"/>
+      <stop offset="1" stop-color="#F97316" stop-opacity="0.28"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="1" y="1" width="46" height="46" rx="13" fill="url(#invexaBgAuthLight)"/>
+  <rect x="1" y="1" width="46" height="46" rx="13" stroke="#0B1021" stroke-opacity="0.14"/>
+  <path d="M8 15H40" stroke="url(#invexaGlowAuthLight)" stroke-width="1.7" stroke-linecap="round"/>
+  <path d="M8 33H40" stroke="url(#invexaGlowAuthLight)" stroke-width="1.7" stroke-linecap="round"/>
+  <rect x="12" y="10" width="6" height="28" rx="3" fill="#F8FAFC"/>
+  <path d="M25 12L36.5 36" stroke="#F8FAFC" stroke-width="4.3" stroke-linecap="round"/>
+  <path d="M36.5 12L25 36" stroke="#F8FAFC" stroke-width="4.3" stroke-linecap="round"/>
+  <circle cx="12.5" cy="11" r="1.6" fill="#22D3EE"/>
+  <circle cx="37" cy="36.8" r="1.6" fill="#FB923C"/>
+
+  <text x="66" y="24" fill="#0F172A" font-family="'Segoe UI', 'Poppins', sans-serif" font-size="24" font-weight="700" letter-spacing="1">InveXa</text>
+  <text x="66" y="39" fill="#64748B" font-family="'Segoe UI', 'Poppins', sans-serif" font-size="9" font-weight="600" letter-spacing="0.65">Inventory Command Center</text>
+</svg>

@@ -1,0 +1,26 @@
+<svg width="154" height="32" viewBox="0 0 154 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="invexaBgDark" x1="4" y1="3" x2="28" y2="29" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22D3EE"/>
+      <stop offset="0.52" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#8B5CF6"/>
+    </linearGradient>
+    <linearGradient id="invexaGlowDark" x1="6" y1="6" x2="26" y2="26" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67E8F9" stop-opacity="0.48"/>
+      <stop offset="1" stop-color="#FDBA74" stop-opacity="0.42"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="1" y="1" width="30" height="30" rx="9" fill="url(#invexaBgDark)"/>
+  <rect x="1" y="1" width="30" height="30" rx="9" stroke="#E2E8F0" stroke-opacity="0.2"/>
+  <path d="M6 10H26" stroke="url(#invexaGlowDark)" stroke-width="1.2" stroke-linecap="round"/>
+  <path d="M6 22H26" stroke="url(#invexaGlowDark)" stroke-width="1.2" stroke-linecap="round"/>
+  <rect x="8" y="7" width="4" height="18" rx="2" fill="#F8FAFC"/>
+  <path d="M17.2 8.3L24.6 23.7" stroke="#F8FAFC" stroke-width="3" stroke-linecap="round"/>
+  <path d="M24.6 8.3L17.2 23.7" stroke="#F8FAFC" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="8.3" cy="7.8" r="1.1" fill="#67E8F9"/>
+  <circle cx="24.8" cy="24.2" r="1.1" fill="#FDBA74"/>
+
+  <text x="42" y="18.5" fill="#F8FAFC" font-family="'Segoe UI', 'Poppins', sans-serif" font-size="14" font-weight="700" letter-spacing="0.6">InveXa</text>
+  <text x="42" y="27.2" fill="#CBD5E1" font-family="'Segoe UI', 'Poppins', sans-serif" font-size="6" font-weight="600" letter-spacing="0.45">Inventory Intelligence</text>
+</svg>

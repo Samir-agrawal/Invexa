@@ -1,0 +1,34 @@
+Run guide (local)
+
+Prereqs
+- Node.js 20+ recommended (project uses packages requiring Node 20+).
+- Docker Desktop running.
+
+Frontend (from repo root)
+1) npm install
+2) npm run dev
+3) Open http://localhost:5173
+
+Backend (from repo root)
+1) cd backend
+2) npm install
+3) cp .env.example .env
+4) docker compose up -d
+5) npm run prisma:generate
+6) npx prisma migrate dev --name init
+7) npx prisma migrate dev --name add_product_category_brand
+8) npm run prisma:seed
+9) npm run dev
+
+Backend URLs
+- API base: http://localhost:4000
+- Swagger UI: http://localhost:4000/api/docs
+- OpenAPI JSON: http://localhost:4000/api/openapi.json
+
+Demo login
+- admin@example.com / ChangeMe123! (or ADMIN_SEED_PASSWORD if set)
+
+Notes
+- If Prisma reports drift or missing migrations, reset the dev DB and re-run migrations/seeding:
+  npx prisma migrate reset --force
+- Resetting drops all local data in the dev database.
