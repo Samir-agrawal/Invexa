@@ -118,9 +118,9 @@ export default function DemandInsights() {
             undefined,
             true,
           ),
-          apiRequest<InventoryLevel[]>("/inventory/levels?page=1&pageSize=200", undefined, true),
-          apiRequest<SupplierOption[]>("/suppliers?page=1&pageSize=200", undefined, true),
-          apiRequest<ProductOption[]>("/products?page=1&pageSize=200", { cache: "no-store" }),
+          apiRequest<InventoryLevel[]>("/inventory/levels?page=1&pageSize=100", undefined, true),
+          apiRequest<SupplierOption[]>("/suppliers?page=1&pageSize=100", undefined, true),
+          apiRequest<ProductOption[]>("/products?page=1&pageSize=100", undefined, true),
           ...trendRequests,
         ]);
 
@@ -137,23 +137,31 @@ export default function DemandInsights() {
         }
 
         if (stockResult.status === "fulfilled") {
-          setStockRiskItems(stockResult.value.data);
+          const items = stockResult.value.data;
+          setStockRiskItems(Array.isArray(items) ? items : []);
         }
 
         if (reorderResult.status === "fulfilled") {
-          setReorderSoonItems(reorderResult.value.data);
+          const items = reorderResult.value.data;
+          setReorderSoonItems(Array.isArray(items) ? items : []);
         }
 
         if (levelsResult.status === "fulfilled") {
-          const warehouseMap = new Map<string, InventoryLevel["warehouse"]>();
-          levelsResult.value.data.forEach((level) => {
-            warehouseMap.set(level.warehouse.id, level.warehouse);
-          });
-          setWarehouseOptions(Array.from(warehouseMap.values()));
+          const levelsData = levelsResult.value.data;
+          if (Array.isArray(levelsData)) {
+            const warehouseMap = new Map<string, InventoryLevel["warehouse"]>();
+            levelsData.forEach((level) => {
+              if (level?.warehouse?.id) {
+                warehouseMap.set(level.warehouse.id, level.warehouse);
+              }
+            });
+            setWarehouseOptions(Array.from(warehouseMap.values()));
+          }
         }
 
         if (suppliersResult.status === "fulfilled") {
-          setSupplierOptions(suppliersResult.value.data);
+          const suppliersData = suppliersResult.value.data;
+          setSupplierOptions(Array.isArray(suppliersData) ? suppliersData : []);
         }
 
         if (productsResult.status === "fulfilled") {
@@ -212,18 +220,18 @@ export default function DemandInsights() {
 
   const filteredStockRiskItems = useMemo(() => {
     return stockRiskItems.filter((item) => {
-      if (selectedWarehouse && item.warehouse.id !== selectedWarehouse) return false;
+      if (selectedWarehouse && item.warehouse?.id !== selectedWarehouse) return false;
       if (selectedSupplier && item.supplier?.id !== selectedSupplier) return false;
-      if (selectedCategory && normalizeCategory(item.product.category) !== selectedCategory) return false;
+      if (selectedCategory && normalizeCategory(item.product?.category ?? null) !== selectedCategory) return false;
       return true;
     });
   }, [stockRiskItems, selectedWarehouse, selectedSupplier, selectedCategory]);
 
   const filteredReorderSoonItems = useMemo(() => {
     return reorderSoonItems.filter((item) => {
-      if (selectedWarehouse && item.warehouse.id !== selectedWarehouse) return false;
+      if (selectedWarehouse && item.warehouse?.id !== selectedWarehouse) return false;
       if (selectedSupplier && item.supplier?.id !== selectedSupplier) return false;
-      if (selectedCategory && normalizeCategory(item.product.category) !== selectedCategory) return false;
+      if (selectedCategory && normalizeCategory(item.product?.category ?? null) !== selectedCategory) return false;
       return true;
     });
   }, [reorderSoonItems, selectedWarehouse, selectedSupplier, selectedCategory]);
@@ -410,24 +418,24 @@ export default function DemandInsights() {
                   <TableRow key={item.ruleId}>
                     <TableCell className="py-4 text-theme-sm text-gray-700 dark:text-gray-200">
                       <div className="font-medium text-gray-800 dark:text-white/90">
-                        {item.product.name}
+                        {item.product?.name ?? "—"}
                       </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">{item.product.sku}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{item.product?.sku ?? "—"}</div>
                     </TableCell>
                     <TableCell className="py-4 text-theme-sm text-gray-600 dark:text-gray-300">
-                      {item.warehouse.code}
+                      {item.warehouse?.code ?? "—"}
                     </TableCell>
                     <TableCell className="py-4 text-theme-sm text-gray-600 dark:text-gray-300">
-                      {formatNumber(item.currentStock.available)}
+                      {formatNumber(item.currentStock?.available ?? 0)}
                     </TableCell>
                     <TableCell className="py-4 text-theme-sm text-gray-600 dark:text-gray-300">
-                      {item.daysUntilStockout === null ? "—" : item.daysUntilStockout}
+                      {item.daysUntilStockout == null ? "—" : item.daysUntilStockout}
                     </TableCell>
                     <TableCell className="py-4 text-theme-sm text-gray-600 dark:text-gray-300">
-                      {item.riskScore.toFixed(2)}
+                      {(item.riskScore ?? 0).toFixed(2)}
                     </TableCell>
                     <TableCell className="py-4 text-theme-xs text-gray-500 dark:text-gray-400">
-                      {renderTriggers(item.triggerReasons)}
+                      {renderTriggers(item.triggerReasons ?? [])}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -493,24 +501,24 @@ export default function DemandInsights() {
                   <TableRow key={item.ruleId}>
                     <TableCell className="py-4 text-theme-sm text-gray-700 dark:text-gray-200">
                       <div className="font-medium text-gray-800 dark:text-white/90">
-                        {item.product.name}
+                        {item.product?.name ?? "—"}
                       </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">{item.product.sku}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{item.product?.sku ?? "—"}</div>
                     </TableCell>
                     <TableCell className="py-4 text-theme-sm text-gray-600 dark:text-gray-300">
-                      {item.warehouse.code}
+                      {item.warehouse?.code ?? "—"}
                     </TableCell>
                     <TableCell className="py-4 text-theme-sm text-gray-600 dark:text-gray-300">
-                      {formatNumber(item.currentStock.available)}
+                      {formatNumber(item.currentStock?.available ?? 0)}
                     </TableCell>
                     <TableCell className="py-4 text-theme-sm text-gray-600 dark:text-gray-300">
-                      {formatNumber(item.threshold.minLevel)}
+                      {formatNumber(item.threshold?.minLevel ?? 0)}
                     </TableCell>
                     <TableCell className="py-4 text-theme-sm text-gray-600 dark:text-gray-300">
-                      {formatNumber(item.recommendedOrderQty)}
+                      {formatNumber(item.recommendedOrderQty ?? 0)}
                     </TableCell>
                     <TableCell className="py-4 text-theme-sm text-gray-600 dark:text-gray-300">
-                      {item.leadTimeDays} days
+                      {item.leadTimeDays ?? 0} days
                     </TableCell>
                   </TableRow>
                 ))}
