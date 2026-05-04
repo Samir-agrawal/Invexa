@@ -11,6 +11,39 @@ import {
   ReorderSoonQuery,
   StockRiskQuery,
 } from "./analytics.schema";
+import { env } from "../../config/env";
+import { logger } from "../../config/logger";
+
+type QueryInsightItem = {
+  id: string;
+  name: string;
+  category: string;
+  brand: string;
+  rationale: string;
+};
+
+type QueryInsightResponse = {
+  mode: "demo" | "ai";
+  notice: string;
+  query: string;
+  summary: string;
+  results: QueryInsightItem[];
+};
+
+type QueryInsightCandidate = {
+  id: string;
+  name: string;
+  category: string | null;
+  brand: string | null;
+  description: string | null;
+  onHand: number;
+  available: number;
+  reserved: number;
+  outflow30d: number;
+  dailyOutflow: number;
+  minLevel: number | null;
+  stockoutRisk: boolean;
+};
 
 type ReorderCandidate = {
   ruleId: string;
@@ -55,10 +88,443 @@ function trendFromDelta(delta: number): "up" | "down" | "flat" {
   return "flat";
 }
 
-function buildImagePath(seed: string) {
-  const checksum = Array.from(seed).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+const categoryImageMap: Record<string, string> = {
+  Electronics: "/images/product/product-01.jpg",
+  Office: "/images/product/product-02.jpg",
+  Home: "/images/product/product-03.jpg",
+  Apparel: "/images/product/product-04.jpg",
+  Tools: "/images/product/product-05.jpg",
+  Food: "/images/product/product-01.jpg",
+};
+
+function buildImagePath(params: { seed: string; name?: string | null; category?: string | null }) {
+  const normalizedCategory = params.category?.trim() ?? "";
+  const mapped = categoryImageMap[normalizedCategory];
+
+  if (mapped) return mapped;
+
+  const lowerName = (params.name ?? "").toLowerCase();
+  if (lowerName.includes("chair") || lowerName.includes("desk") || lowerName.includes("lamp")) {
+    return categoryImageMap.Office;
+  }
+  if (lowerName.includes("glove") || lowerName.includes("jacket") || lowerName.includes("hoodie")) {
+    return categoryImageMap.Apparel;
+  }
+  if (lowerName.includes("drill") || lowerName.includes("socket") || lowerName.includes("ladder")) {
+    return categoryImageMap.Tools;
+  }
+  if (lowerName.includes("coffee") || lowerName.includes("tea") || lowerName.includes("water")) {
+    return categoryImageMap.Food;
+  }
+
+  const checksum = Array.from(params.seed).reduce((sum, char) => sum + char.charCodeAt(0), 0);
   const imageIndex = (checksum % 5) + 1;
   return `/images/product/product-0${imageIndex}.jpg`;
+}
+
+function extractJson(text: string) {
+  const fenced = text.match(/```json\s*([\s\S]*?)\s*```/i);
+  if (fenced?.[1]) {
+    return fenced[1].trim();
+  }
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+  return text.slice(start, end + 1);
+}
+
+async function requestGroqInsights(params: {
+  apiKey: string;
+  model: string;
+  query: string;
+  catalog: QueryInsightCandidate[];
+}) {
+  const payload = {
+    model: params.model,
+    temperature: 0.2,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are an inventory demand analyst. Select up to 6 products relevant to the query. Return strict JSON only.",
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          query: params.query,
+          catalog: params.catalog,
+          response_format: {
+            summary: "string",
+            results: [{ id: "string", rationale: "string" }],
+          },
+        }),
+      },
+    ],
+  };
+
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${params.apiKey}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+    error?: { message?: string; type?: string };
+  };
+
+  if (!response.ok) {
+    return {
+      ok: false as const,
+      error: `Groq ${response.status}: ${data.error?.message ?? "Request failed"}`,
+    };
+  }
+
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) {
+    return {
+      ok: false as const,
+      error: "Groq response missing content",
+    };
+  }
+
+  const jsonText = extractJson(content);
+  if (!jsonText) {
+    return {
+      ok: false as const,
+      error: "Groq response did not contain JSON",
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(jsonText) as {
+      summary?: string;
+      results?: Array<{ id?: string; rationale?: string }>;
+    };
+    if (!Array.isArray(parsed.results)) {
+      return {
+        ok: false as const,
+        error: "Groq response JSON missing results",
+      };
+    }
+    return {
+      ok: true as const,
+      summary: parsed.summary ?? "AI insights generated.",
+      results: parsed.results
+        .filter((item) => typeof item.id === "string" && typeof item.rationale === "string")
+        .map((item) => ({ id: item.id, rationale: item.rationale })),
+    };
+  } catch {
+    return {
+      ok: false as const,
+      error: "Groq response JSON parse failed",
+    };
+  }
+}
+
+const categoryKeywords: Array<{ keyword: string; category: string }> = [
+  { keyword: "electronics", category: "Electronics" },
+  { keyword: "office", category: "Office" },
+  { keyword: "home", category: "Home" },
+  { keyword: "apparel", category: "Apparel" },
+  { keyword: "tools", category: "Tools" },
+  { keyword: "food", category: "Food" },
+];
+
+function detectCategory(query: string) {
+  const normalized = query.toLowerCase();
+  const match = categoryKeywords.find((entry) => normalized.includes(entry.keyword));
+  return match?.category ?? null;
+}
+
+function buildCatalogForQuery(
+  catalog: QueryInsightCandidate[],
+  query: string,
+) {
+  const normalized = query.toLowerCase();
+  const isHighDemand = normalized.includes("high demand") || normalized.includes("rising") || normalized.includes("strong outflow");
+  const isLowDemand = normalized.includes("low demand") || normalized.includes("slow") || normalized.includes("slow-moving");
+  const isStockout = normalized.includes("stockout") || normalized.includes("replenish") || normalized.includes("reorder");
+  const isLowStock = normalized.includes("low stock") || normalized.includes("low available");
+
+  const scored = catalog.map((item) => {
+    let score = 0;
+
+    if (isStockout) {
+      score += item.stockoutRisk ? 1000 : 0;
+      score += item.dailyOutflow * 10;
+      score += Math.max(0, 200 - item.available);
+    } else if (isLowStock) {
+      score += Math.max(0, 200 - item.available);
+      score += item.dailyOutflow * 4;
+    } else if (isLowDemand) {
+      score += Math.max(0, 100 - item.dailyOutflow * 10);
+      score += Math.max(0, 100 - item.outflow30d);
+    } else if (isHighDemand) {
+      score += item.dailyOutflow * 12;
+      score += item.outflow30d;
+    } else {
+      score += item.dailyOutflow * 6;
+      score += item.outflow30d;
+    }
+
+    return { item, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.map((entry) => entry.item).slice(0, 20);
+}
+
+function buildRationale(params: {
+  categoryMatch: string | null;
+  query: string;
+  name: string;
+}) {
+  if (params.categoryMatch) {
+    return `Matches category ${params.categoryMatch}.`;
+  }
+
+  const normalized = params.query.toLowerCase();
+  if (normalized.includes("stockout") || normalized.includes("reorder")) {
+    return "Flagged for replenishment review.";
+  }
+
+  if (normalized.includes("demand") || normalized.includes("growth")) {
+    return "Demand trend indicates follow-up.";
+  }
+
+  return `Relevant to query "${params.query}".`;
+}
+
+export async function getQueryInsights(query: string): Promise<QueryInsightResponse> {
+  const trimmedQuery = query.trim();
+  const categoryMatch = detectCategory(trimmedQuery);
+  const aiKeyConfigured = Boolean(env.AI_API_KEY);
+  const model = env.AI_MODEL ?? "llama-3.1-8b-instant";
+  let aiFailureReason: string | null = null;
+
+  const where: Prisma.ProductWhereInput = { deletedAt: null };
+
+  if (categoryMatch) {
+    where.category = { equals: categoryMatch, mode: "insensitive" };
+  } else if (trimmedQuery.length >= 3) {
+    where.OR = [
+      { name: { contains: trimmedQuery, mode: "insensitive" } },
+      { brand: { contains: trimmedQuery, mode: "insensitive" } },
+      { description: { contains: trimmedQuery, mode: "insensitive" } },
+    ];
+  }
+
+  let products = await prisma.product.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    take: 40,
+    select: {
+      id: true,
+      name: true,
+      category: true,
+      brand: true,
+      description: true,
+      deletedAt: true,
+    },
+  });
+
+  if (products.length === 0) {
+    products = await prisma.product.findMany({
+      where: { deletedAt: null },
+      orderBy: { createdAt: "desc" },
+      take: 40,
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        brand: true,
+        description: true,
+        deletedAt: true,
+      },
+    });
+  }
+
+  const productIds = products.map((product) => product.id);
+  const lookbackDays = 30;
+  const since = new Date();
+  since.setDate(since.getDate() - lookbackDays);
+
+  const [levels, outflowAgg, rules] = await Promise.all([
+    prisma.inventoryLevel.findMany({
+      where: { productId: { in: productIds } },
+      select: {
+        productId: true,
+        quantityOnHand: true,
+        quantityAvailable: true,
+        quantityReserved: true,
+      },
+    }),
+    prisma.stockMovement.groupBy({
+      by: ["productId"],
+      where: {
+        productId: { in: productIds },
+        createdAt: { gte: since },
+        movementType: {
+          in: [
+            StockMovementType.OUT,
+            StockMovementType.TRANSFER_OUT,
+            StockMovementType.RETURN_OUT,
+          ],
+        },
+      },
+      _sum: { quantity: true },
+    }),
+    prisma.reorderRule.findMany({
+      where: { productId: { in: productIds }, deletedAt: null, isActive: true },
+      select: { productId: true, minLevel: true },
+    }),
+  ]);
+
+  const metricsByProduct = new Map<string, QueryInsightCandidate>();
+
+  for (const product of products) {
+    metricsByProduct.set(product.id, {
+      id: product.id,
+      name: product.name,
+      category: product.category,
+      brand: product.brand,
+      description: product.description,
+      onHand: 0,
+      available: 0,
+      reserved: 0,
+      outflow30d: 0,
+      dailyOutflow: 0,
+      minLevel: null,
+      stockoutRisk: false,
+    });
+  }
+
+  for (const level of levels) {
+    const entry = metricsByProduct.get(level.productId);
+    if (!entry) continue;
+    entry.onHand += toNumber(level.quantityOnHand);
+    entry.available += toNumber(level.quantityAvailable);
+    entry.reserved += toNumber(level.quantityReserved);
+  }
+
+  for (const row of outflowAgg) {
+    const entry = metricsByProduct.get(row.productId);
+    if (!entry) continue;
+    const totalOutflow = toNumber(row._sum.quantity);
+    entry.outflow30d = totalOutflow;
+    entry.dailyOutflow = Number((totalOutflow / lookbackDays).toFixed(3));
+  }
+
+  for (const rule of rules) {
+    const entry = metricsByProduct.get(rule.productId);
+    if (!entry) continue;
+    const minLevel = toNumber(rule.minLevel);
+    entry.minLevel = minLevel;
+    entry.stockoutRisk = entry.available <= minLevel;
+  }
+
+  const catalog = Array.from(metricsByProduct.values());
+  const shortlist = buildCatalogForQuery(catalog, trimmedQuery);
+
+  if (aiKeyConfigured && env.AI_API_KEY) {
+    try {
+      const aiResult = await requestGroqInsights({
+        apiKey: env.AI_API_KEY,
+        model,
+        query: trimmedQuery,
+        catalog: shortlist,
+      });
+
+      if (aiResult.ok && aiResult.results.length > 0) {
+        const productById = new Map(products.map((product) => [product.id, product]));
+        const results = aiResult.results
+          .map((item) => {
+            const product = productById.get(item.id);
+            if (!product) return null;
+            return {
+              id: product.id,
+              name: product.name,
+              category: product.category ?? "Uncategorized",
+              brand: product.brand ?? "Unbranded",
+              rationale: item.rationale,
+            };
+          })
+          .filter((item): item is QueryInsightItem => item !== null)
+          .slice(0, 6);
+
+        if (results.length > 0) {
+          return {
+            mode: "ai",
+            notice: "AI enabled via Groq. Results generated from catalog metadata.",
+            query: trimmedQuery,
+            summary: aiResult.summary,
+            results,
+          };
+        }
+      }
+      if (aiResult.ok) {
+        const fallbackResults = shortlist.slice(0, 6).map((product) => ({
+          id: product.id,
+          name: product.name,
+          category: product.category ?? "Uncategorized",
+          brand: product.brand ?? "Unbranded",
+          rationale: buildRationale({
+            categoryMatch,
+            query: trimmedQuery,
+            name: product.name,
+          }),
+        }));
+
+        return {
+          mode: "ai",
+          notice: "AI responded but did not match catalog items. Showing fallback results.",
+          query: trimmedQuery,
+          summary: aiResult.summary ?? `Showing ${fallbackResults.length} products for "${trimmedQuery}".`,
+          results: fallbackResults,
+        };
+      }
+      if (!aiResult.ok) {
+        aiFailureReason = aiResult.error;
+        logger.warn({ err: aiResult.error }, "Groq insights failed");
+      }
+    } catch (error) {
+      aiFailureReason = error instanceof Error ? error.message : "AI request failed";
+      logger.warn({ err: aiFailureReason }, "Groq insights error");
+    }
+  }
+
+  const results = shortlist.slice(0, 6).map((product) => ({
+    id: product.id,
+    name: product.name,
+    category: product.category ?? "Uncategorized",
+    brand: product.brand ?? "Unbranded",
+    rationale: buildRationale({
+      categoryMatch,
+      query: trimmedQuery,
+      name: product.name,
+    }),
+  }));
+
+  const mode: QueryInsightResponse["mode"] = "demo";
+  const notice = aiKeyConfigured
+    ? aiFailureReason
+      ? `AI request failed (${aiFailureReason}). Showing demo insights based on catalog metadata.`
+      : "AI unavailable, showing demo insights based on catalog metadata."
+    : "AI key not configured. Showing demo insights based on catalog metadata.";
+  const summary = `Showing ${results.length} products for "${trimmedQuery}".`;
+
+  return {
+    mode,
+    notice,
+    query: trimmedQuery,
+    summary,
+    results,
+  };
 }
 
 async function buildReorderCandidates(options: {
@@ -527,7 +993,11 @@ export async function getRecentOrders(query: RecentOrdersQuery) {
       category: leadItem?.product.category ?? "Procurement",
       price: `$${toNumber(order.totalAmount).toFixed(2)}`,
       status: mapOrderStatusToTableStatus(order.status),
-      image: buildImagePath(order.orderNumber),
+      image: buildImagePath({
+        seed: order.orderNumber,
+        name: leadItem?.product.name,
+        category: leadItem?.product.category,
+      }),
       createdAt: order.orderDate,
     };
   });
@@ -545,7 +1015,11 @@ export async function getRecentOrders(query: RecentOrdersQuery) {
       category: leadItem?.product.category ?? "Sales",
       price: `$${toNumber(order.totalAmount).toFixed(2)}`,
       status: mapOrderStatusToTableStatus(order.status),
-      image: buildImagePath(order.orderNumber),
+      image: buildImagePath({
+        seed: order.orderNumber,
+        name: leadItem?.product.name,
+        category: leadItem?.product.category,
+      }),
       createdAt: order.orderDate,
     };
   });

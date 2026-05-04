@@ -305,5 +305,13 @@ export const openApiDocument = {
         responses: { 200: { description: "Risk data" } },
       },
     },
+    "/analytics/query-insights": {
+      post: {
+        tags: ["Analytics"],
+        summary: "Query-based demand insights",
+        security: [{ bearerAuth: [] }],
+        responses: { 200: { description: "Insights" } },
+      },
+    },
   },
 } as const;

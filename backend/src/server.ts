@@ -19,6 +19,8 @@ async function bootstrap() {
           corsOrigins: env.CORS_ORIGINS,
           openApiEnabled: env.OPENAPI_ENABLED,
           docsPath: env.OPENAPI_ENABLED ? "/api/docs" : null,
+          aiConfigured: Boolean(env.AI_API_KEY),
+          aiModel: env.AI_MODEL ?? "llama-3.1-8b-instant",
         },
         "Backend started",
       );

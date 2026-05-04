@@ -47,6 +47,56 @@ type ProductsMeta = {
   totalPages: number;
 };
 
+type QueryInsightItem = {
+  id: string;
+  name: string;
+  category: string;
+  brand: string;
+  rationale: string;
+};
+
+type QueryInsightResponse = {
+  mode: "demo" | "ai";
+  notice: string;
+  query: string;
+  summary: string;
+  results: QueryInsightItem[];
+};
+
+const categoryImageMap: Record<string, string> = {
+  Electronics: "/images/product/product-01.jpg",
+  Office: "/images/product/product-02.jpg",
+  Home: "/images/product/product-03.jpg",
+  Apparel: "/images/product/product-04.jpg",
+  Tools: "/images/product/product-05.jpg",
+  Food: "/images/product/product-01.jpg",
+};
+
+function resolveProductImage(category: string | null, name: string, seed: string) {
+  const normalizedCategory = category?.trim() ?? "";
+  const mapped = categoryImageMap[normalizedCategory];
+
+  if (mapped) return mapped;
+
+  const lowerName = name.toLowerCase();
+  if (lowerName.includes("chair") || lowerName.includes("desk") || lowerName.includes("lamp")) {
+    return categoryImageMap.Office;
+  }
+  if (lowerName.includes("glove") || lowerName.includes("jacket") || lowerName.includes("hoodie")) {
+    return categoryImageMap.Apparel;
+  }
+  if (lowerName.includes("drill") || lowerName.includes("socket") || lowerName.includes("ladder")) {
+    return categoryImageMap.Tools;
+  }
+  if (lowerName.includes("coffee") || lowerName.includes("tea") || lowerName.includes("water")) {
+    return categoryImageMap.Food;
+  }
+
+  const checksum = Array.from(seed).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const imageIndex = (checksum % 5) + 1;
+  return `/images/product/product-0${imageIndex}.jpg`;
+}
+
 function toUserFriendlyError(status: number, fallbackMessage: string) {
   if (status === 401) {
     return "Please log in to continue.";
@@ -65,7 +115,6 @@ function toProductRow(item: ApiProduct): ProductRow {
   const reorderStatus = stock <= 10 ? "Reorder Soon" : "Healthy";
   const demandSignal: ProductRow["demandSignal"] =
     stock <= 10 ? "High Demand" : stock <= 20 ? "Stable" : "Cooling";
-  const imageIndex = (checksum % 5) + 1;
 
   return {
     id: item.id,
@@ -86,7 +135,7 @@ function toProductRow(item: ApiProduct): ProductRow {
       month: "short",
       year: "numeric",
     }),
-    image: `/images/product/product-0${imageIndex}.jpg`,
+    image: resolveProductImage(item.category, item.name, item.sku),
   };
 }
 
@@ -110,6 +159,19 @@ export default function Products() {
   const [totalItems, setTotalItems] = useState(0);
   const [isAddFormOpen, setIsAddFormOpen] = useState(false);
   const [isEditFormOpen, setIsEditFormOpen] = useState(false);
+  const [insightsQuery, setInsightsQuery] = useState(
+    "Which products are at risk of stockout in the next 14 days?",
+  );
+  const [insightsResult, setInsightsResult] = useState<QueryInsightResponse | null>(null);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
+  const [isInsightsLoading, setIsInsightsLoading] = useState(false);
+  const insightsSuggestions = [
+    "Show products at highest stockout risk in the next 14 days.",
+    "Which items have high demand but low available stock?",
+    "List slow-moving products with low outflow this month.",
+    "Recommend replenishment priorities for Electronics.",
+    "Highlight products with low stock but strong outflow.",
+  ];
   const [formValues, setFormValues] = useState({
     name: "",
     category: "Accessories",
@@ -333,6 +395,42 @@ export default function Products() {
     }
   };
 
+  const handleRunInsightsQuery = async (overrideQuery?: string) => {
+    if (overrideQuery) {
+      setInsightsQuery(overrideQuery);
+    }
+
+    const trimmedQuery = (overrideQuery ?? insightsQuery).trim();
+    if (!trimmedQuery) {
+      setInsightsError("Enter a question to run the insight query.");
+      return;
+    }
+
+    setIsInsightsLoading(true);
+    setInsightsError(null);
+
+    try {
+      const payload = await apiRequest<QueryInsightResponse>(
+        "/analytics/query-insights",
+        {
+          method: "POST",
+          body: JSON.stringify({ query: trimmedQuery }),
+        },
+        true,
+      );
+
+      setInsightsResult(payload.data);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setInsightsError(toUserFriendlyError(error.status, "Unable to run query."));
+      } else {
+        setInsightsError(error instanceof Error ? error.message : "Unable to run query.");
+      }
+    } finally {
+      setIsInsightsLoading(false);
+    }
+  };
+
   const handleOpenFilterPrompt = () => {
     const nextCategory = window.prompt("Category filter (leave empty to clear)", categoryFilter);
     if (nextCategory === null) {
@@ -380,13 +478,69 @@ export default function Products() {
         </div>
 
         <div className="rounded-2xl border border-brand-200 bg-brand-50/40 p-4 dark:border-brand-800/60 dark:bg-brand-500/10">
-          <p className="text-sm font-medium text-brand-700 dark:text-brand-400">Query-Based Demand Insights</p>
-          <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">
-            Query: Which products are at risk of stockout in the next 14 days based on recent sell-through?
-          </p>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-            Result: ASUS ROG Gaming Laptop and Apple Watch Ultra should be replenished within one cycle.
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-medium text-brand-700 dark:text-brand-400">Query-Based Demand Insights</p>
+            {insightsResult ? (
+              <Badge color={insightsResult.mode === "ai" ? "success" : "info"}>
+                {insightsResult.mode === "ai" ? "AI enabled" : "Demo mode"}
+              </Badge>
+            ) : null}
+          </div>
+          <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
+            <input
+              type="text"
+              value={insightsQuery}
+              onChange={(event) => setInsightsQuery(event.target.value)}
+              placeholder="Ask a demand question"
+              className="h-11 w-full rounded-lg border border-brand-200 bg-white px-4 text-sm text-gray-800 placeholder:text-gray-400 focus:border-brand-400 focus:outline-hidden focus:ring-3 focus:ring-brand-500/15 dark:border-brand-700/60 dark:bg-gray-900 dark:text-white/90"
+            />
+            <button
+              type="button"
+              onClick={() => handleRunInsightsQuery()}
+              disabled={isInsightsLoading}
+              className="inline-flex h-11 items-center justify-center rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {isInsightsLoading ? "Running..." : "Run query"}
+            </button>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {insightsSuggestions.map((suggestion) => (
+              <button
+                key={suggestion}
+                type="button"
+                onClick={() => handleRunInsightsQuery(suggestion)}
+                className="rounded-full border border-brand-200 bg-white px-3 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50 dark:border-brand-700/60 dark:bg-gray-900 dark:text-brand-200 dark:hover:bg-gray-800"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+          {insightsError ? (
+            <p className="mt-2 text-sm text-error-600 dark:text-error-400">{insightsError}</p>
+          ) : null}
+          {insightsResult ? (
+            <div className="mt-3 rounded-lg border border-brand-100 bg-white/70 px-3 py-3 text-sm text-gray-700 dark:border-brand-700/60 dark:bg-gray-900/60 dark:text-gray-200">
+              <p className="text-xs text-brand-700 dark:text-brand-300">{insightsResult.notice}</p>
+              <p className="mt-1 font-medium text-gray-800 dark:text-white/90">{insightsResult.summary}</p>
+              <div className="mt-3 space-y-2">
+                {insightsResult.results.map((item) => (
+                  <div key={item.id} className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800 dark:text-white/90">{item.name}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {item.category} · {item.brand}
+                      </p>
+                    </div>
+                    <p className="text-xs text-gray-600 dark:text-gray-300">{item.rationale}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+              Ask a question like "Show electronics at risk of stockout" to see demo insights.
+            </p>
+          )}
         </div>
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">

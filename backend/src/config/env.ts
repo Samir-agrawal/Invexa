@@ -20,6 +20,8 @@ const envSchema = z.object({
   JWT_ACCESS_EXPIRES_IN: z.string().optional(),
   JWT_REFRESH_SECRET: z.string().optional(),
   JWT_REFRESH_EXPIRES_IN: z.string().optional(),
+  AI_API_KEY: z.string().optional(),
+  AI_MODEL: z.string().optional(),
 });
 
 const parsed = envSchema.parse(process.env);

@@ -42,7 +42,14 @@ export const stockRiskSchema = z.object({
   }),
 });
 
+export const queryInsightsSchema = z.object({
+  body: z.object({
+    query: z.string().trim().min(3).max(200),
+  }),
+});
+
 export type ReorderSoonQuery = z.infer<typeof reorderSoonSchema>["query"];
 export type MonthlySalesQuery = z.infer<typeof monthlySalesSchema>["query"];
 export type RecentOrdersQuery = z.infer<typeof recentOrdersSchema>["query"];
 export type StockRiskQuery = z.infer<typeof stockRiskSchema>["query"];
+export type QueryInsightsInput = z.infer<typeof queryInsightsSchema>["body"];

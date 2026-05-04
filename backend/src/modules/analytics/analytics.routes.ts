@@ -6,6 +6,8 @@ import {
   analyticsSummarySchema,
   monthlySalesSchema,
   MonthlySalesQuery,
+  queryInsightsSchema,
+  QueryInsightsInput,
   recentOrdersSchema,
   RecentOrdersQuery,
   reorderSoonSchema,
@@ -90,6 +92,21 @@ analyticsRouter.get(
       success: true,
       data: result.items,
       meta: result.meta,
+    });
+  }),
+);
+
+analyticsRouter.post(
+  "/analytics/query-insights",
+  authenticate,
+  validate(queryInsightsSchema),
+  asyncHandler(async (req, res) => {
+    const body = req.body as QueryInsightsInput;
+    const result = await analyticsService.getQueryInsights(body.query);
+
+    return res.status(200).json({
+      success: true,
+      data: result,
     });
   }),
 );
